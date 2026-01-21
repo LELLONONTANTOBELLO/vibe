@@ -1,0 +1,13 @@
+[project]
+name = "repl-nix-workspace"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.12"
+dependencies = [
+    "flask>=3.1.2",
+    "kivy>=2.3.1",
+    "plyer>=2.1.0",
+    "pyjnius>=1.7.0",
+    "python-android>=1.1.0",
+    "requests>=2.32.5",
+]

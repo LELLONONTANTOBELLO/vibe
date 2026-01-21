@@ -1,2 +1,2 @@
-# vibe
-app vibe
+# vibra
+Vibra cell

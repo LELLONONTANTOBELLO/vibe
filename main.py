@@ -3,12 +3,19 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
-from kivy.clock import Clock
 from kivy.utils import get_color_from_hex
-from plyer import vibrator
+from kivy.clock import Clock
+from jnius import autoclass, cast
+from android.runnable import run_on_ui_thread
 import requests
 from threading import Thread
 import time
+
+# Android imports
+PythonService = autoclass('org.kivy.android.PythonService')
+PythonActivity = autoclass('org.kivy.android.PythonActivity')
+Context = autoclass('android.content.Context')
+Intent = autoclass('android.content.Intent')
 
 SERVER_URL = "https://www.crashando.it/vibe/vibra.php"
 
@@ -27,15 +34,15 @@ class VibrationController(BoxLayout):
         }
         
         self.service_running = False
-        self.last_vibrate_id = None
-        self.polling_thread = None
         
+        # Header
         header = BoxLayout(orientation='vertical', size_hint_y=0.15, spacing=10)
         title = Label(text='Vibration Controller', font_size='24sp', bold=True, color=(1, 1, 1, 1))
         self.status_label = Label(text='Pronto', font_size='14sp', color=(1, 1, 1, 0.9), size_hint_y=0.4)
         header.add_widget(title)
         header.add_widget(self.status_label)
         
+        # Send section
         send_section = BoxLayout(orientation='vertical', size_hint_y=0.4, spacing=10)
         send_title = Label(text='INVIA VIBRAZIONE A TUTTI', font_size='14sp', bold=True, color=(1, 1, 1, 0.9), size_hint_y=0.2)
         send_grid = GridLayout(cols=2, spacing=12, size_hint_y=0.8)
@@ -48,6 +55,7 @@ class VibrationController(BoxLayout):
         send_section.add_widget(send_title)
         send_section.add_widget(send_grid)
         
+        # Receive section
         receive_section = BoxLayout(orientation='vertical', size_hint_y=0.35, spacing=10)
         receive_title = Label(text='RICEZIONE VIBRAZIONI', font_size='14sp', bold=True, color=(1, 1, 1, 0.9), size_hint_y=0.2)
         control_layout = BoxLayout(orientation='vertical', spacing=12, size_hint_y=0.8)
@@ -66,6 +74,28 @@ class VibrationController(BoxLayout):
         self.add_widget(header)
         self.add_widget(send_section)
         self.add_widget(receive_section)
+        
+        # Check service status on startup
+        Clock.schedule_once(lambda dt: self.check_service_status(), 1)
+    
+    def check_service_status(self):
+        """Controlla se il servizio è già in esecuzione"""
+        try:
+            activity = PythonActivity.mActivity
+            if activity:
+                # Il servizio potrebbe essere già attivo
+                self.update_ui_for_running_service()
+        except:
+            pass
+    
+    def update_ui_for_running_service(self):
+        """Aggiorna UI quando il servizio è attivo"""
+        self.service_running = True
+        self.start_btn.opacity = 0
+        self.start_btn.disabled = True
+        self.stop_btn.opacity = 1
+        self.stop_btn.disabled = False
+        self.update_status('Servizio attivo', True)
     
     def update_status(self, text, active=False):
         self.status_label.text = text
@@ -85,56 +115,40 @@ class VibrationController(BoxLayout):
         Thread(target=send, daemon=True).start()
     
     def start_service(self, instance):
+        """Avvia il servizio in background"""
         if self.service_running:
             return
-        self.service_running = True
-        self.start_btn.opacity = 0
-        self.start_btn.disabled = True
-        self.stop_btn.opacity = 1
-        self.stop_btn.disabled = False
-        self.update_status('Servizio attivo', True)
+        
         try:
-            vibrator.vibrate(0.1)
-        except:
-            pass
-        self.polling_thread = Thread(target=self.polling_loop, daemon=True)
-        self.polling_thread.start()
+            activity = PythonActivity.mActivity
+            service_intent = Intent(activity, PythonService)
+            service_intent.putExtra('pythonServiceArgument', 'vibration_service')
+            activity.startService(service_intent)
+            
+            self.update_ui_for_running_service()
+            self.update_status('Servizio avviato in background!', True)
+            
+        except Exception as e:
+            self.update_status(f'Errore avvio: {str(e)}')
+            print(f"Errore start service: {e}")
     
     def stop_service(self, instance):
-        self.service_running = False
-        self.stop_btn.opacity = 0
-        self.stop_btn.disabled = True
-        self.start_btn.opacity = 1
-        self.start_btn.disabled = False
-        self.update_status('Servizio fermato')
-    
-    def polling_loop(self):
-        while self.service_running:
-            try:
-                response = requests.get(f'{SERVER_URL}?poll&t={int(time.time() * 1000)}', timeout=5)
-                if response.status_code == 200:
-                    data = response.json()
-                    if data.get('pattern') and data.get('id') != self.last_vibrate_id:
-                        self.last_vibrate_id = data['id']
-                        pattern = data['pattern']
-                        self.execute_vibration(pattern)
-                        Clock.schedule_once(lambda dt: self.update_status(f'{pattern.upper()} ricevuto!', True), 0)
-                        Clock.schedule_once(lambda dt: self.update_status('Servizio attivo', True), 2)
-            except Exception as e:
-                print(f'Errore polling: {e}')
-            time.sleep(0.15)
-    
-    def execute_vibration(self, pattern_key):
-        pattern = self.patterns.get(pattern_key)
-        if not pattern:
-            return
+        """Ferma il servizio in background"""
         try:
-            for i, duration in enumerate(pattern):
-                if i > 0:
-                    time.sleep(0.2)
-                vibrator.vibrate(duration)
+            activity = PythonActivity.mActivity
+            service_intent = Intent(activity, PythonService)
+            activity.stopService(service_intent)
+            
+            self.service_running = False
+            self.stop_btn.opacity = 0
+            self.stop_btn.disabled = True
+            self.start_btn.opacity = 1
+            self.start_btn.disabled = False
+            self.update_status('Servizio fermato')
+            
         except Exception as e:
-            print(f'Errore vibrazione: {e}')
+            self.update_status(f'Errore stop: {str(e)}')
+            print(f"Errore stop service: {e}")
 
 class VibrationApp(App):
     def build(self):
