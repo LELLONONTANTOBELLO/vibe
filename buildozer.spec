@@ -21,7 +21,7 @@ android.accept_sdk_license = True
 
 android.arch = arm64-v8a
 
-p4a.branch = master
+p4a.branch = main
 
 [buildozer]
 log_level = 2
