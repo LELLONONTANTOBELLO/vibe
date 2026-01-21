@@ -37,13 +37,6 @@ jobs:
           ccache \
           libltdl-dev
     
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
-    
-    - name: Accept Android SDK licenses
-      run: |
-        yes | sdkmanager --licenses || true
-    
     - name: Install Python dependencies
       run: |
         pip install --upgrade pip
@@ -62,8 +55,6 @@ jobs:
     - name: Build APK with Buildozer
       run: |
         buildozer android debug
-      env:
-        ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     
     - name: Upload APK artifact
       uses: actions/upload-artifact@v4
@@ -71,19 +62,3 @@ jobs:
         name: vibration-controller-apk
         path: bin/*.apk
         if-no-files-found: error
-    
-    - name: Get APK filename
-      id: apk
-      run: |
-        echo "filename=$(ls bin/*.apk | head -n 1)" >> $GITHUB_OUTPUT
-    
-    - name: Create Release (optional)
-      if: github.ref == 'refs/heads/main'
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: v1.0.${{ github.run_number }}
-        files: bin/*.apk
-        draft: false
-        prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
